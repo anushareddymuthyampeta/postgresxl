@@ -250,6 +250,9 @@ static void do_failover_command(char *line)
 	}
 	else if (TestToken("gtm"))
 	{
+		if (isVarYes(VAR_gtmExtraNode) && !is_none(sval(VAR_gtmExtraNodeServer)))
+			failover_gtmExtraNode();	
+		else 
 		if (isVarYes(VAR_gtmSlave) && !is_none(sval(VAR_gtmSlaveServer)))
 			failover_gtm();
 		else
@@ -367,9 +370,14 @@ static void do_kill_command(char *line)
 			kill_gtm_master();
 			if (isVarYes(VAR_gtmSlave))
 				kill_gtm_slave();
+			if (isVarYes(VAR_gtmExtraNode))
+				kill_gtm_extranode();
 		}
-		else if (TestToken("master"))
-			kill_gtm_master();
+		else if (TestToken("master")) {
+			if (isVarYes(VAR_gtmExtraNode) && !is_none(sval(VAR_gtmExtraNodeServer)))
+                        failover_gtmExtraNode();
+			//kill_gtm_master();
+		}
 		else if (TestToken("slave"))
 		{
 			if (isVarYes(VAR_gtmSlave))
@@ -521,6 +529,7 @@ static void do_kill_command(char *line)
 
 static void init_all(void)
 {
+	elog(INFO, "Entered init all method");
 	init_gtm_master(true);
 	start_gtm_master();
 	if (isVarYes(VAR_gtmSlave))
@@ -546,6 +555,15 @@ static void init_all(void)
 	{
 		init_datanode_slave_all();
 		start_datanode_slave_all();
+	}
+	//elog(INFO, "Reached before ExtraNode IF block");
+	//if(isVarYes(VAR_gtmExtraNode))
+	//elog(INFO, "VAR_ExtraNode value is set");
+	if(isVarYes(VAR_gtmExtraNode))
+	{
+		elog(ERROR, "Extra Node is set to True");		
+		init_gtm_extranode();
+		start_gtm_extranode();
 	}
 	configure_nodes_all();
 }
@@ -586,6 +604,8 @@ static void do_init_command(char *line)
 			init_gtm_master(true);
 		else if (TestToken("slave"))
 			init_gtm_slave();
+		else if (TestToken("extraNode"))
+			init_gtm_extranode();
 		else
 			elog(ERROR, "ERROR: please specify master, slave or all for init gtm command.\n");
 	}
@@ -709,12 +729,18 @@ static void start_all(void)
 	start_datanode_master_all();
 	if (isVarYes(VAR_datanodeSlave))
 		start_datanode_slave_all();
+	/*if(!isVarYes(VAR_gtmExtraNode))
+		elog(INFO, "ExtraNode config is not set");
+	if(isVarYes(VAR_gtmExtraNode)) {
+		elog(INFO, "Start all method is invoked and is inside GTMExtraNode");
+		start_gtm_extranode();
+	}*/
 }
 
 static void do_start_command(char *line)
 {
 	char *token;
-
+	elog(INFO, "Entered do_start_command");
 	if (GetToken() == NULL)
 		elog(ERROR, "ERROR: Please specify option to start command.\n");
 	else if (TestToken("all"))
@@ -726,6 +752,8 @@ static void do_start_command(char *line)
 			start_gtm_master();
 			if (isVarYes(VAR_gtmSlave))
 				start_gtm_slave();
+			//if (isVarYes(VAR_gtmExtraNode))
+			//	start_gtm_extranode();
 		}
 		else if (TestToken("master"))
 			start_gtm_master();
@@ -907,6 +935,14 @@ static void do_add_command(char *line)
 			GetAndSet(dir, "ERROR: please specify the working director for gtm slave\n");
 			add_gtmSlave(name, host, atoi(port), dir);
 		}
+ 		/*else if (TestToken("extranode"))
+		{
+			GetAndSet(name, "ERROR: please specify the name of gtm extra node\n");
+			GetAndSet(host, "ERROR: please specify the host name for gtm extra node\n");
+			GetAndSet(port, "ERROR: please specify the port number for gtm extra node\n");
+			GetAndSet(dir, "ERROR: please specify the working director for gtm extra node\n");
+			//add_gtmExtraNode(name, host, atoi(port), dir);
+		}*/
  		else
  		{
  			elog(ERROR, "ERROR: you can specify only master/slave to add gtm command. %s is invalid.\n", token);
@@ -1533,6 +1569,8 @@ static void show_configuration(char *line)
 			show_config_gtmMaster(TRUE, sval(VAR_gtmMasterServer));
 			if (isVarYes(VAR_gtmSlave))
 				show_config_gtmSlave(TRUE, sval(VAR_gtmSlaveServer));
+			//if (isVarYes(VAR_gtmExtraNode))
+			//	show_config_gtmExtraNode(TRUE, sval(VAR_gtmExtraNode));
 		}
 		else if (TestToken("master"))
 			show_config_gtmMaster(TRUE, sval(VAR_gtmMasterServer));
@@ -1678,6 +1716,9 @@ static void show_config_host(char *hostname)
 	/* GTM Slave */
 	if (isVarYes(VAR_gtmSlave) && (strcmp(sval(VAR_gtmSlaveServer), hostname) == 0))
 		show_config_gtmSlave(TRUE, NULL);
+	/* GTM ExtraNode */
+	//if (isVarYes(VAR_gtmExtraNode) && (strcmp(sval(VAR_gtmExtraNode), hostname) == 0))
+	//	show_config_gtmExtraNode(TRUE, NULL);
 	/* GTM Proxy */
 	if (isVarYes(VAR_gtmProxy))
 		for (ii = 0; aval(VAR_gtmProxyServers)[ii]; ii++)
@@ -1741,6 +1782,8 @@ static void do_clean_command(char *line)
 			clean_gtm_slave();
 		if (isVarYes(VAR_gtmProxy))
 			clean_gtm_proxy_all();
+		if (isVarYes(VAR_gtmExtraNode))
+			clean_gtm_extranode();
 		clean_coordinator_master_all();
 		if (isVarYes(VAR_coordSlave))
 			clean_coordinator_slave_all();

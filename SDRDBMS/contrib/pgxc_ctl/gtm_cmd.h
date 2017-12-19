@@ -16,57 +16,71 @@
 
 extern int init_gtm_master(bool stop);
 extern int init_gtm_slave(void);
+extern int init_gtm_extranode(void);
 extern int init_gtm_proxy(char **nodeList);
 extern int init_gtm_proxy_all(void);
 extern cmd_t *prepare_initGtmMaster(bool stop);
 extern cmd_t *prepare_initGtmSlave(void);
+extern cmd_t *prepare_initGtmExtraNode(void);
 extern cmd_t *prepare_initGtmProxy(char *nodeName);
 
 extern int add_gtmMaster(char *name, char *host, int port, char *dir);
 extern int add_gtmSlave(char *name, char *host, int port, char *dir);
+extern int add_gtmExtraNode(char *name, char *host, int port, char *dir);
 extern int add_gtmProxy(char *name, char *host, int port, char *dir);
 extern int remove_gtmMaster(bool clean_opt);
 extern int remove_gtmSlave(bool clean_opt);
 extern int remove_gtmProxy(char *name, bool clean_opt);
+extern int remove_gtmExtraNode(bool clean_opt);
 
 extern int kill_gtm_master(void);
 extern int kill_gtm_slave(void);
+extern int kill_gtm_extranode(void);
 extern int kill_gtm_proxy(char **nodeList);
 extern int kill_gtm_proxy_all(void);
 extern cmd_t *prepare_killGtmMaster(void);
 extern cmd_t *prepare_killGtmSlave(void);
 extern cmd_t *prepare_killGtmProxy(char *nodeName);
+extern cmd_t *prepare_killGtmExtraNode(void);
 
 extern int show_config_gtmMaster(int flag, char *hostname);
 extern int show_config_gtmSlave(int flag, char *hostname);
+extern int show_config_gtmExtraNode(int flag, char *hostname);
 extern int show_config_gtmProxy(int flag, int idx, char *hostname);
 extern int show_config_gtmProxies(char **nameList);
 
 extern int start_gtm_master(void);
 extern int start_gtm_slave(void);
+extern int start_gtm_extranode(void);
 extern int start_gtm_proxy(char **nodeList);
 extern int start_gtm_proxy_all(void);
 extern cmd_t *prepare_startGtmMaster(void);
 extern cmd_t *prepare_startGtmSlave(void);
+extern cmd_t *prepare_startGtmExtraNode(void);
 extern cmd_t *prepare_startGtmProxy(char *nodeName);
 
 extern int stop_gtm_master(void);
 extern int stop_gtm_slave(void);
+extern int stop_gtm_extranode(void);
 extern int stop_gtm_proxy(char **nodeList);
 extern int stop_gtm_proxy_all(void);
 extern cmd_t *prepare_stopGtmMaster(void);
 extern cmd_t *prepare_stopGtmSlave(void);
 extern cmd_t *prepare_stopGtmProxy(char *nodeName);
+extern cmd_t *prepare_stopGtmExtraNode(void);
 
 extern int failover_gtm(void);
+extern int failover_gtmExtraNode(void);
 extern int reconnect_gtm_proxy(char **nodeList);
 extern int reconnect_gtm_proxy_all(void);
 extern cmd_t *prepare_reconnectGtmProxy(char *nodeName);
 
 extern int clean_gtm_master(void);
 extern int clean_gtm_slave(void);
+extern int clean_gtm_extranode(void);
 extern cmd_t *prepare_cleanGtmMaster(void);
 extern cmd_t *prepare_cleanGtmSlave(void);
+extern cmd_t *prepare_cleanGtmExtraNode(void);
 
 extern int clean_gtm_proxy(char **nodeList);
 extern int clean_gtm_proxy_all(void);

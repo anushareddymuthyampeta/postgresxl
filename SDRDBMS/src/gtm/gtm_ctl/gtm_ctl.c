@@ -166,7 +166,7 @@ get_pgpid(void)
 {
 	FILE	   *pidf;
 	long		pid;
-
+	printf("%s: PID File name is ", pid_file);
 	pidf = fopen(pid_file, "r");
 	if (pidf == NULL)
 	{

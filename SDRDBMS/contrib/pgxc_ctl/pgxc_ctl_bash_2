@@ -59,6 +59,11 @@ function print_values
 	echo gtmSlaveDir $gtmSlaveDir
 	echo gtmSlaveSpecificExtraConfig $gtmSlaveSpecificExtraConfig
 
+	echo gtmExtraNode $gtmExtraNode
+	echo gtmExtraNodeName $gtmExtraNodeName
+	echo gtmExtraNodeServer $gtmExtraNodeServer
+	echo gtmExtraNodePort $gtmExtraNodePort
+	echo gtmExtraNodeDir $gtmExtraNodeDir
 	# GTM Proxy
 	echo gtmProxy $gtmProxy
 	print_array gtmProxyNames

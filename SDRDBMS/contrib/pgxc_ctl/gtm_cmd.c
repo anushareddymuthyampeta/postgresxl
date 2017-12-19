@@ -132,7 +132,7 @@ int init_gtm_master(bool stop)
 	cmdList_t *cmdList;
 	cmd_t *cmd;
 
-	elog(INFO, "Initialize GTM master\n");
+	elog(INFO, "Initialize GTM master test\n");
 	if (is_none(sval(VAR_gtmMasterServer)))
 	{
 		elog(INFO, "No GTM master specified, exiting!\n");
@@ -284,6 +284,76 @@ int add_gtmSlave(char *name, char *host, int port, char *dir)
 	return(start_gtm_slave());
 }
 
+/*
+ * Add gtm extra node: to be used after all the configuration is done.
+ *
+ * This function only maintains internal configuration, updte configuration file,
+ * and make backup if configured.   You should run init_gtm_extranode and stat_gtm_extranode
+ * separately.
+ */
+int add_gtmExtraNode(char *name, char *host, int port, char *dir)
+{
+	char port_s[MAXTOKEN+1];
+	char date[MAXTOKEN+1];
+	FILE *f;
+	int	rc;
+
+	if (isVarYes(VAR_gtmExtraNode))
+	{
+		elog(ERROR, "ERROR: GTM extra node is already configured.\n");
+		return 1;
+	}
+	if (is_none(name))
+	{
+		elog(ERROR, "ERROR: Cannot add gtm extra node with the name \"none\".\n");
+		return 1;
+	}
+	if (is_none(host))
+	{
+		elog(ERROR, "ERROR: Cannot add gtm extra node with the name \"none\".\n");
+		return 1;
+	}
+	if (is_none(dir))
+	{
+		elog(ERROR, "ERROR: Cannot add gtm extra node with the directory \"none\".\n");
+		return 1;
+	}
+	if (checkSpecificResourceConflict(name, host, port, dir, FALSE))
+	{
+		elog(ERROR, "ERROR: New specified name:%s, host:%s, port:%d and dir:\"%s\" conflicts with existing node.\n",
+			 name, host, port, dir);
+		return 1;
+	}
+	assign_sval(VAR_gtmExtraNode, Strdup("y"));
+	assign_sval(VAR_gtmExtraNodeName, Strdup(name));
+	assign_sval(VAR_gtmExtraNodeServer, Strdup(host));
+	snprintf(port_s, MAXTOKEN, "%d", port);
+	assign_sval(VAR_gtmExtraNodePort, Strdup(port_s));
+	assign_sval(VAR_gtmExtraNodeDir, Strdup(dir));
+	makeServerList();
+	if ((f = fopen(pgxc_ctl_config_path, "a")) == NULL)
+	{
+		elog(ERROR, "ERROR: cannot open configuration file \"%s\", %s\n", pgxc_ctl_config_path, strerror(errno));
+		return 1;
+	}
+	fprintf(f, 
+			"#===================================================\n"
+			"# pgxc configuration file updated due to GTM slave addition\n"
+			"#        %s\n", 
+			timeStampString(date, MAXTOKEN+1));
+	fprintSval(f, VAR_gtmExtraNode);
+	fprintSval(f, VAR_gtmExtraNodeName);
+	fprintSval(f, VAR_gtmExtraNodeServer);
+	fprintSval(f, VAR_gtmExtraNodePort);
+	fprintSval(f, VAR_gtmExtraNodeDir);
+	fprintf(f, "%s","#----End of reconfiguration -------------------------\n");
+	fclose(f);
+	backup_configuration();
+	if ((rc = init_gtm_extranode()) != 0)
+		return rc;
+	return(start_gtm_extranode());
+}
+
 int remove_gtmMaster(bool clean_opt)
 {
 	FILE *f;
@@ -389,6 +459,53 @@ int remove_gtmSlave(bool clean_opt)
 	return 0;
 }
 
+int remove_gtmExtraNode(bool clean_opt)
+{
+	FILE *f;
+
+	if (!isVarYes(VAR_gtmExtraNode) || !sval(VAR_gtmExtraNodeServer) || is_none(sval(VAR_gtmExtraNodeServer)))
+	{
+		elog(ERROR, "ERROR: GTM extra node is not configured.\n");
+		return 1;
+	}
+	if (!do_gtm_ping(sval(VAR_gtmExtraNodeServer), atoi(sval(VAR_gtmExtraNodePort))))
+	{
+		elog(ERROR, "ERROR: GTM extra node is now running. Cannot remove it.\n");
+		return 1;
+	}
+	elog(NOTICE, "Removing gtm extra node.\n");
+	if (clean_opt)
+		clean_gtm_extranode();
+	reset_var(VAR_gtmExtraNode);
+	assign_sval(VAR_gtmExtraNode, Strdup("n"));
+	reset_var(VAR_gtmExtraNodeName);
+	assign_sval(VAR_gtmExtraNodeName, Strdup("none"));
+	reset_var(VAR_gtmExtraNodeServer);
+	assign_sval(VAR_gtmExtraNodeServer, Strdup("none"));
+	reset_var(VAR_gtmExtraNodePort);
+	assign_sval(VAR_gtmExtraNodePort, Strdup("-1"));
+	reset_var(VAR_gtmExtraNodeDir);
+	assign_sval(VAR_gtmExtraNodeDir, Strdup("none"));
+	if ((f = fopen(pgxc_ctl_config_path, "a")) == NULL)
+	{
+		elog(ERROR, "ERROR: cannot open configuration file \"%s\", %s\n", pgxc_ctl_config_path, strerror(errno));
+		return 1;
+	}
+	fprintf(f, 
+			"#===================================================\n"
+			"# pgxc configuration file updated due to GTM extra node removal\n"
+			"#        %s\n",
+			timeStampString(date, MAXTOKEN+1));
+	fprintSval(f, VAR_gtmExtraNode);
+	fprintSval(f, VAR_gtmExtraNodeServer);
+	fprintSval(f, VAR_gtmExtraNodePort);
+	fprintSval(f, VAR_gtmExtraNodeDir);
+	fprintf(f, "%s", "#----End of reconfiguration -------------------------\n");
+	fclose(f);
+	backup_configuration();
+	elog(NOTICE, "Done.\n");
+	return 0;
+}
 
 /*
  * Init gtm slave -------------------------------------------------------------
@@ -457,13 +574,78 @@ cmd_t *prepare_initGtmSlave(void)
 	return (cmdInitGtm);
 }
 
+/*
+ * Init gtm ExtraNode -------------------------------------------------------------
+ */
+
+/* 
+ * Assumes Gtm ExtraNode is configured.
+ * Caller should check this.
+ */
+cmd_t *prepare_initGtmExtraNode(void)
+{
+	char date[MAXTOKEN+1];
+	cmd_t *cmdInitGtm, *cmdGtmConf;
+	FILE *f;
+	char **fileList = NULL;
+
+	if (!isVarYes(VAR_gtmExtraNode) || (sval(VAR_gtmExtraNodeServer) == NULL) || is_none(sval(VAR_gtmExtraNodeServer)))
+	{
+		elog(ERROR, "ERROR: GTM extra node is not configured.\n");
+		return(NULL);
+	}
+	cmdInitGtm = initCmd(sval(VAR_gtmExtraNodeServer));
+	snprintf(newCommand(cmdInitGtm), MAXLINE,
+			 "[ -f %s/gtm.pid ] && gtm_ctl -D %s -m immediate -Z gtm stop;"
+			 "rm -rf %s;"
+			 "mkdir -p %s;"
+			 "PGXC_CTL_SILENT=1 initgtm -Z gtm -D %s",
+			 sval(VAR_gtmExtraNodeDir),
+			 sval(VAR_gtmExtraNodeDir),
+			 sval(VAR_gtmExtraNodeDir), sval(VAR_gtmExtraNodeDir), sval(VAR_gtmExtraNodeDir));
+
+
+	appendCmdEl(cmdInitGtm, (cmdGtmConf = initCmd(sval(VAR_gtmExtraNodeServer))));
+	snprintf(newCommand(cmdGtmConf), MAXLINE,
+			 "cat >> %s/gtm.conf",
+			 sval(VAR_gtmExtraNodeDir));
+	if ((f = prepareLocalStdin(newFilename(cmdGtmConf->localStdin), MAXPATH, NULL)) == NULL)
+	{
+		cleanCmd(cmdInitGtm);
+		return(NULL);
+	}
+	fprintf(f, 
+			"#===============================================\n"
+			"# Added at initialization, %s\n"
+			"listen_addresses = '*'\n",
+			timeStampString(date, MAXPATH+1));
+	if (!is_none(sval(VAR_gtmExtraConfig)))
+		AddMember(fileList, sval(VAR_gtmExtraConfig));
+	if (!is_none(sval(VAR_gtmMasterSpecificExtraConfig)))
+		AddMember(fileList, sval(VAR_gtmMasterSpecificExtraConfig));
+	appendFiles(f, fileList);
+	CleanArray(fileList);
+	fprintf(f,
+			"port = %s\n"
+			"nodename = '%s'\n"
+			"startup = STANDBY\n"
+			"active_host = '%s'\n"
+			"active_port = %d\n"
+			"# End of addition\n",
+			sval(VAR_gtmExtraNodePort), sval(VAR_gtmExtraNodeName),
+			sval(VAR_gtmMasterServer), atoi(sval(VAR_gtmMasterPort)));
+	fclose(f);
+	return (cmdInitGtm);
+}
+
+
 int init_gtm_slave(void)
 {
 	cmdList_t *cmdList;
 	cmd_t *cmdInitGtm;
 	int rc;
 
-	elog(INFO, "Initialize GTM slave\n");
+	elog(INFO, "Initialize GTM slave test\n");
 	cmdList = initCmdList();
 	if ((cmdInitGtm = prepare_initGtmSlave()))
 	{
@@ -477,6 +659,24 @@ int init_gtm_slave(void)
 	return 1;
 }
 
+int init_gtm_extranode(void)
+{
+	cmdList_t *cmdList;
+	cmd_t *cmdInitGtm;
+	int rc;
+
+	elog(INFO, "Initialize GTM Extra Node\n");
+	cmdList = initCmdList();
+	if ((cmdInitGtm = prepare_initGtmExtraNode()))
+	{
+		addCmd(cmdList, cmdInitGtm);
+		rc = doCmdList(cmdList);
+		cleanCmdList(cmdList);
+		elog(INFO, "Done.\n");
+		return(rc);
+	}
+	return 1;
+}
 /*
  * Start gtm master -----------------------------------------------------
  */
@@ -501,7 +701,7 @@ int start_gtm_master(void)
 	cmdList_t *cmdList;
 	int rc = 0;
 
-	elog(INFO, "Start GTM master\n");
+	elog(INFO, "Start GTM master test\n");
 	if (is_none(sval(VAR_gtmMasterServer)))
 	{
 		elog(INFO, "No GTM master specified, cannot start. Exiting!\n");
@@ -538,15 +738,58 @@ cmd_t *prepare_startGtmSlave(void)
 	return (cmdGtmCtl);
 }
 
+/*
+ * Start gtm slave ----------------------------------------------------
+ */
+cmd_t *prepare_startGtmExtraNode(void)
+{
+	cmd_t *cmdGtmCtl;
+
+	if (!isVarYes(VAR_gtmExtraNode) || (sval(VAR_gtmExtraNodeServer) == NULL) || is_none(sval(VAR_gtmExtraNodeServer)))
+	{
+		elog(ERROR, "ERROR: GTM extra node is not configured.\n");
+		return(NULL);
+	}
+	cmdGtmCtl = initCmd(sval(VAR_gtmExtraNodeServer));
+	snprintf(newCommand(cmdGtmCtl), MAXLINE, 
+			 "[ -f %s/gtm.pid ] && gtm_ctl stop -Z gtm -D %s;"
+			 "rm -rf %s/register.node;"
+			 "gtm_ctl start -Z gtm -D %s",
+			 sval(VAR_gtmExtraNodeDir),
+			 sval(VAR_gtmExtraNodeDir),
+			 sval(VAR_gtmExtraNodeDir),
+			 sval(VAR_gtmExtraNodeDir));
+	return (cmdGtmCtl);
+}
+
 int start_gtm_slave(void)
 {
 	cmdList_t *cmdList;
 	cmd_t *cmd;
 	int rc;
 
-	elog(INFO, "Start GTM slave");
+	elog(INFO, "Start GTM slave test");
 	cmdList = initCmdList();
 	if ((cmd = prepare_startGtmSlave()))
+	{
+		addCmd(cmdList, cmd);
+		rc = doCmdList(cmdList);
+		cleanCmdList(cmdList);
+		elog(INFO, "Done.\n");
+		return(rc);
+	}
+	return 1;
+}
+
+int start_gtm_extranode(void)
+{
+	cmdList_t *cmdList;
+	cmd_t *cmd;
+	int rc;
+
+	elog(INFO, "Start GTM extra node");
+	cmdList = initCmdList();
+	if ((cmd = prepare_startGtmExtraNode()))
 	{
 		addCmd(cmdList, cmd);
 		rc = doCmdList(cmdList);
@@ -603,6 +846,25 @@ cmd_t *prepare_stopGtmSlave(void)
 	return(cmdGtmCtl);
 }
 
+/*
+ * Stop gtm extra node ---------------------------------------------------------------
+ */
+cmd_t *prepare_stopGtmExtraNode(void)
+{
+	cmd_t *cmdGtmCtl;
+
+	if (!isVarYes(VAR_gtmExtraNode) || (sval(VAR_gtmExtraNodeServer) == NULL) || is_none(sval(VAR_gtmExtraNodeServer)))
+	{
+		elog(ERROR, "ERROR: GTM extra node is not configured.\n");
+		return(NULL);
+	}
+	cmdGtmCtl = initCmd(sval(VAR_gtmExtraNodeServer));
+	snprintf(newCommand(cmdGtmCtl), MAXLINE,
+			 "gtm_ctl stop -Z gtm -D %s",
+			 sval(VAR_gtmExtraNodeDir));
+	return(cmdGtmCtl);
+}
+
 int stop_gtm_slave(void)
 {
 	cmdList_t *cmdList;
@@ -612,6 +874,24 @@ int stop_gtm_slave(void)
 	elog(INFO, "Stop GTM slave\n");
 	cmdList = initCmdList();
 	if ((cmd = prepare_stopGtmSlave()))
+	{
+		addCmd(cmdList, cmd);
+		rc = doCmdList(cmdList);
+		cleanCmdList(cmdList);
+		return(rc);
+	}
+	return 1;
+}
+
+int stop_gtm_extranode(void)
+{
+	cmdList_t *cmdList;
+	cmd_t *cmd;
+	int rc;
+
+	elog(INFO, "Stop GTM extranode\n");
+	cmdList = initCmdList();
+	if ((cmd = prepare_stopGtmExtraNode()))
 	{
 		addCmd(cmdList, cmd);
 		rc = doCmdList(cmdList);
@@ -719,6 +999,144 @@ int kill_gtm_slave(void)
 	else return 1;
 }
 
+/*
+ * Kill gtm extra node --------------------------------------------------------
+ *
+ * GTM slave has no significant informaion to carry over.  But it is a good
+ * habit to stop gtm slave gracefully with stop command.
+ */
+cmd_t *prepare_killGtmExtraNode(void)
+{
+	cmd_t *cmdKill;
+	pid_t gtmPid;
+
+	if (!isVarYes(VAR_gtmExtraNode) || (sval(VAR_gtmExtraNodeServer) == NULL) || is_none(sval(VAR_gtmExtraNodeServer)))
+	{
+		elog(ERROR, "ERROR: GTM extra node is not configured.\n");
+		return(NULL);
+	}
+	cmdKill = initCmd(sval(VAR_gtmExtraNodeServer));
+	gtmPid = get_gtm_pid(sval(VAR_gtmExtraNodeServer), sval(VAR_gtmExtraNodeDir));
+	if (gtmPid > 0)
+		snprintf(newCommand(cmdKill), MAXLINE,
+				 "kill -9 %d; rm -rf /tmp/.s.'*'%d'*' %s/gtm.pid",
+				 gtmPid, atoi(sval(VAR_gtmExtraNodePort)), sval(VAR_gtmExtraNodeDir));
+	else
+	{
+		elog(WARNING, "WARNING: pid for gtm extranode was not found.  Remove socket only.\n");
+		snprintf(newCommand(cmdKill), MAXLINE,
+				 "rm -rf /tmp/.s.'*'%d'*' %s/gtm.pid",
+				 atoi(sval(VAR_gtmExtraNodePort)), sval(VAR_gtmExtraNodeDir));
+	}
+	return(cmdKill);
+}
+
+
+int kill_gtm_extranode(void)
+{
+	cmdList_t *cmdList;
+	cmd_t *cmdKill;
+	int rc;
+
+	elog(INFO, "Kill GTM extranode\n");
+	cmdList = initCmdList();
+	if ((cmdKill = prepare_killGtmExtraNode()))
+	{
+		addCmd(cmdList, cmdKill);
+		rc = doCmdList(cmdList);
+		cleanCmdList(cmdList);
+		return(rc);
+	}
+	else return 1;
+}
+/*
+ * Failover the gtm to extra node ------------------------------------------------------
+ */
+int failover_gtmExtraNode(void)
+{
+	char date[MAXTOKEN+1];
+	char *stdIn;
+	int rc;
+	FILE *f;
+	
+	elog(INFO, "Failover gtm\n");
+	if (!isVarYes(VAR_gtmExtraNode) || (sval(VAR_gtmExtraNodeServer) == NULL) || is_none(sval(VAR_gtmExtraNodeServer)))
+	{
+		elog(ERROR, "ERROR: GTM extra node is not configured. Cannot failover.\n");
+		return(1);
+	}
+	
+	if (do_gtm_ping(sval(VAR_gtmExtraNodeServer), atoi(sval(VAR_gtmExtraNodePort))) != 0)
+	{
+		elog(ERROR, "ERROR: GTM extra node is not running\n");
+		return(1);
+	}
+
+	elog(NOTICE, "Running \"gtm_ctl promote -Z gtm -D %s\"\n", sval(VAR_gtmExtraNodeDir));
+	rc = doImmediate(sval(VAR_gtmExtraNodeServer), NULL, 
+					 "gtm_ctl promote -Z gtm -D %s", sval(VAR_gtmExtraNodeDir));
+	if (WEXITSTATUS(rc) != 0)
+	{
+		elog(ERROR, "ERROR: could not promote gtm (host:%s, dir:%s)\n", sval(VAR_gtmExtraNodeServer), sval(VAR_gtmExtraNodeDir));
+		return 1;
+	}
+
+	if ((f = prepareLocalStdin(newFilename(stdIn), MAXPATH, NULL)) == NULL)
+		return(1);
+	fprintf(f,
+			"#===================================================\n"
+			"# Updated due to GTM failover\n"
+			"#        %s\n"
+			"startup = ACT\n"
+			"#----End of reconfiguration -------------------------\n",
+			timeStampString(date, MAXTOKEN+1));
+	fclose(f);
+	elog(NOTICE, "Updating gtm.conf at %s:%s\n", sval(VAR_gtmExtraNodeServer), sval(VAR_gtmExtraNodeDir));
+	rc = doImmediate(sval(VAR_gtmExtraNodeServer), stdIn, "cat >> %s/gtm.conf", sval(VAR_gtmExtraNodeDir));
+	if (WEXITSTATUS(rc) != 0)
+	{
+		elog(ERROR, "ERROR: could not update gtm.conf (host: %s, dir:%s)\n", sval(VAR_gtmExtraNodeServer), sval(VAR_gtmExtraNodeDir));
+		return 1;
+	}
+
+	if ((f = prepareLocalStdin(stdIn, MAXPATH, NULL)) == NULL)
+		return(1);
+	fprintf(f,
+			"#===================================================\n"
+			"# pgxc configuration file updated due to GTM failover\n"
+			"#        %s\n"
+			"gtmMasterServer=%s\n"
+			"gtmMasterPort=%s\n"
+			"gtmMasterDir=%s\n"
+			"gtmExtraNode=n\n"
+			"gtmExtraNodeServer=none\n"
+			"gtmExtraNodePort=0\n"
+			"gtmExtraNodeDir=none\n"
+			"#----End of reconfiguration -------------------------\n",
+			timeStampString(date, MAXTOKEN+1),
+			sval(VAR_gtmExtraNodeServer),
+			sval(VAR_gtmExtraNodePort),
+			sval(VAR_gtmExtraNodeDir));
+	fclose(f);
+	rc = doImmediate(NULL, stdIn, "cat >> %s", pgxc_ctl_config_path);
+	if (WEXITSTATUS(rc) != 0)
+	{
+		elog(ERROR, "ERROR: could not update gtm.conf (host: %s, dir:%s)\n", sval(VAR_gtmExtraNodeServer), sval(VAR_gtmExtraNodeDir));
+		return 1;
+	}
+	freeAndReset(stdIn);
+	backup_configuration();
+
+	assign_val(VAR_gtmMasterServer, VAR_gtmExtraNodeServer); reset_var(VAR_gtmExtraNodeServer);
+	assign_val(VAR_gtmMasterPort, VAR_gtmExtraNodePort); reset_var(VAR_gtmExtraNodePort);
+	assign_val(VAR_gtmMasterDir, VAR_gtmExtraNodeDir); reset_var(VAR_gtmExtraNodeDir);
+	assign_sval(VAR_gtmExtraNodeServer, "none");
+	assign_sval(VAR_gtmExtraNodePort, "0");
+	assign_sval(VAR_gtmExtraNodeDir, "none");
+	assign_sval(VAR_gtmExtraNode, "n");
+
+	return 0;
+}
 /*
  * Failover the gtm ------------------------------------------------------
  */
@@ -863,6 +1281,20 @@ cmd_t *prepare_cleanGtmSlave(void)
 	return cmd;
 }
 
+cmd_t *prepare_cleanGtmExtraNode(void)
+{
+	cmd_t *cmd;
+	
+	if (!isVarYes(VAR_gtmExtraNode) || is_none(VAR_gtmExtraNodeServer))
+		return(NULL);
+	cmd = initCmd(sval(VAR_gtmExtraNodeServer));
+	snprintf(newCommand(cmd), MAXLINE,
+			 "rm -rf %s; mkdir -p %s; chmod 0700 %s;rm -f /tmp/.s.*%d*",
+			 sval(VAR_gtmExtraNodeDir), sval(VAR_gtmExtraNodeDir), sval(VAR_gtmMasterDir),
+			 atoi(VAR_gtmExtraNodePort));
+	return cmd;
+}
+
 int clean_gtm_slave(void)
 {
 	cmdList_t *cmdList;
@@ -882,6 +1314,24 @@ int clean_gtm_slave(void)
 	return(rc);
 }
 
+int clean_gtm_extranode(void)
+{
+	cmdList_t *cmdList;
+	int rc;
+
+	elog(NOTICE, "Clearing gtm extra node resources.\n");
+	if (!isVarYes(VAR_gtmExtraNode) || is_none(VAR_gtmExtraNodeServer))
+	{
+		elog(ERROR, "ERROR: gtm extra node is not configured.\n");
+		return 1;
+	}
+	cmdList = initCmdList();
+	addCmd(cmdList, prepare_cleanGtmExtraNode());
+	rc = doCmdList(cmdList);
+	cleanCmdList(cmdList);
+	elog(NOTICE, "Done.\n");
+	return(rc);
+}
 /*
  * ==================================================================================
  *
@@ -1537,6 +1987,34 @@ int show_config_gtmSlave(int flag, char *hostname)
 	lockLogFile();
 	elog(NOTICE, "%s", lineBuf);
 	print_simple_node_info(sval(VAR_gtmSlaveName), sval(VAR_gtmSlavePort), sval(VAR_gtmSlaveDir),
+						   sval(VAR_gtmExtraConfig), sval(VAR_gtmSlaveSpecificExtraConfig));
+	unlockLogFile();
+	return 0;
+}
+
+int show_config_gtmExtraNode(int flag, char *hostname)
+{
+	char lineBuf[MAXLINE+1];
+	char editBuf[MAXPATH+1];
+
+	if (!isVarYes(VAR_gtmExtraNode) || is_none(VAR_gtmExtraNodeServer))
+	{
+		elog(ERROR, "ERROR: gtm extra node is not configured.\n");
+		return 0;
+	}
+	lineBuf[0] = 0;
+	if (flag)
+		strncat(lineBuf, "GTM Extra Node: ", MAXLINE);
+	if (hostname)
+	{
+		snprintf(editBuf, MAXPATH, "host: %s", hostname);
+		strncat(lineBuf, editBuf, MAXLINE);
+	}
+	if (flag || hostname)
+		strncat(lineBuf, "\n", MAXLINE);
+	lockLogFile();
+	elog(NOTICE, "%s", lineBuf);
+	print_simple_node_info(sval(VAR_gtmExtraNodeName), sval(VAR_gtmExtraNodePort), sval(VAR_gtmExtraNodeDir),
 						   sval(VAR_gtmExtraConfig), sval(VAR_gtmSlaveSpecificExtraConfig));
 	unlockLogFile();
 	return 0;

@@ -240,6 +240,9 @@ void makeServerList(void)
 	/* GTM Slave */
 	if (isVarYes(VAR_gtmSlave))
 		addServer(aval(VAR_gtmSlaveServer));
+	/* GTM ExtraNode */
+	if(isVarYes(VAR_gtmExtraNode))
+		addServer(aval(VAR_gtmExtraNodeServer));
 	/* GTM_Proxy */
 	if (isVarYes(VAR_gtmProxy))
 		addServer(aval(VAR_gtmProxyServers));
@@ -596,6 +599,9 @@ int checkPortConflict(char *host, int port)
 	/* GTM Slave */
 	if (isVarYes(VAR_gtmSlave) && (strcasecmp(host, sval(VAR_gtmSlaveServer)) == 0) && (atoi(sval(VAR_gtmSlavePort)) == port))
 		return 1;
+	/* GTM ExtraNode */
+	if (isVarYes(VAR_gtmExtraNode) && (strcasecmp(host, sval(VAR_gtmExtraNodeServer)) == 0) && (atoi(sval(VAR_gtmExtraNodePort)) == port))
+		return 1; 
 	/* GTM Proxy */
 	if (isVarYes(VAR_gtmProxy))
 		for (ii = 0; aval(VAR_gtmProxyNames)[ii]; ii++)
@@ -638,6 +644,9 @@ int checkDirConflict(char *host, char *dir)
 		return 1;
 	/* GTM Slave */
 	if (isVarYes(VAR_gtmSlave) && (strcasecmp(host, sval(VAR_gtmSlaveServer)) == 0) && (strcmp(dir, sval(VAR_gtmSlaveDir)) == 0))
+		return 1;
+	/* GTM ExtraNode */
+	if (isVarYes(VAR_gtmExtraNode) && (strcasecmp(host, sval(VAR_gtmExtraNodeServer)) == 0) && (strcmp(dir, sval(VAR_gtmExtraNodeDir)) == 0))
 		return 1;
 	/* GTM Proxy */
 	if (isVarYes(VAR_gtmProxy))
@@ -832,6 +841,13 @@ static void verifyResource(void)
 							VAR_gtmSlavePort, 
 							VAR_gtmSlaveDir, 
 							NULL};
+	
+	char *GtmExtraNodeVars[] = {VAR_gtmExtraNodeName,
+							VAR_gtmExtraNodeServer, 
+							VAR_gtmExtraNodePort, 
+							VAR_gtmExtraNodeDir, 
+							NULL};
+	
 	char *gtmProxyVars[] = {VAR_gtmProxyNames, 
 							VAR_gtmProxyServers, 
 							VAR_gtmProxyPorts, 
@@ -888,6 +904,8 @@ static void verifyResource(void)
 	/* GTM slave */
 	if (isVarYes(VAR_gtmSlave))
 		checkIfConfigured(GtmSlaveVars);
+	if (isVarYes(VAR_gtmExtraNode))
+		checkIfConfigured(GtmExtraNodeVars);
 	/* GTM proxy */
 	if (isVarYes(VAR_gtmProxy))
 		checkConfiguredAndSize(gtmProxyVars, "GTM Proxy");

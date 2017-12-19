@@ -46,6 +46,14 @@
 #define VAR_gtmSlaveDir		"gtmSlaveDir"
 #define VAR_gtmSlaveSpecificExtraConfig	"gtmSlaveSpecificExtraConfig"
 
+
+/* GTM Extra Node */
+#define VAR_gtmExtraNode 	"gtmExtraNode"
+#define VAR_gtmExtraNodeName	"gtmExtraNodeName"
+#define VAR_gtmExtraNodeServer	"gtmExtraNodeServer"
+#define VAR_gtmExtraNodePort	"gtmExtraNodePort"
+#define VAR_gtmExtraNodeDir	"gtmExtraNodeDir"
+
 /* GTM Proxy */
 #define VAR_gtmProxy		"gtmProxy"
 #define VAR_gtmProxyNames	"gtmProxyNames"

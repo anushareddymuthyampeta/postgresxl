@@ -71,6 +71,11 @@ static void monitor_gtm_slave(void)
 		return(printResult(do_gtm_ping(sval(VAR_gtmSlaveServer), atoi(sval(VAR_gtmSlavePort))), "gtm slave", NULL));
 }
 
+static void monitor_gtm_extranode(void)
+{
+	if (doesExist(VAR_gtmExtraNodeServer, 0) && doesExist(VAR_gtmExtraNodePort, 0))
+		return(printResult(do_gtm_ping(sval(VAR_gtmExtraNodeServer), atoi(sval(VAR_gtmExtraNodePort))), "gtm extra node", NULL));
+}
 static void monitor_gtm_proxy(char **nodeList)
 {
 	char **actualNodeList;
@@ -294,6 +299,8 @@ void do_monitor_command(char *line)
 			monitor_gtm_master();
 			if (isVarYes(VAR_gtmSlave))
 				monitor_gtm_slave();
+			if (isVarYes(VAR_gtmExtraNode))
+				monitor_gtm_extranode();
 		}
 		else if (TestToken("master"))
 			monitor_gtm_master();
@@ -427,6 +434,8 @@ void do_monitor_command(char *line)
 		monitor_gtm_master();
 		if (isVarYes(VAR_gtmSlave))
 			monitor_gtm_slave();
+		if (isVarYes(VAR_gtmExtraNode))
+			monitor_gtm_extranode();
 		if (isVarYes(VAR_gtmProxy))
 			monitor_gtm_proxy(aval(VAR_gtmProxyNames));
 		monitor_coordinator(aval(VAR_coordNames));
